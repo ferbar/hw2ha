@@ -18,15 +18,50 @@ import json
 #from subprocess import Popen, PIPE
 import datetime
 import os
+import socket
 
 
 MQTT_SERVER="home-assistant"
-HOST_NAME="your-pc"
-MAC="11:22:33:44:55:66"
+HOST_NAME=socket.gethostname()
+MAC=False
 # mit negative lookahead können verzeichnisse ausgeschlossen werden
 MOUNTPOINT_REGEX="^\/(?!snap|dudl).*$"
 
-OS_PRETTY_NAME="openSUSE Leap 15.5"
+OS_PRETTY_NAME=False
+
+def set_MAC():
+    global MAC
+    global OS_PRETTY_NAME
+    # get MAC address:
+    if MAC == False:
+      #print(psutil.net_if_addrs())
+      for nic_name, nic in psutil.net_if_addrs().items():
+        print("key:", nic_name)
+        if nic_name=='lo':
+          continue
+        #print("nic:", nic)
+        # net interface up?
+        if socket.AF_INET in [snicaddr.family for snicaddr in nic] :
+          print("~~~~ using MAC address of %s" % nic_name)
+          #print(nic)
+          phy=[snicaddr.address for snicaddr in nic if socket.AF_PACKET == snicaddr.family ]
+          print(phy)
+          MAC=phy[0] or False
+          break
+    if MAC == False:
+      print("Error: MAC not found!")
+    print("Hostname", HOST_NAME)
+    print("MAC", MAC)
+
+    file_path = '/etc/os-release'
+
+    with open(file_path, 'r') as file:
+        file_content = file.read()
+        print(file_content)
+        x = re.findall("^PRETTY_NAME=\"(.*)\"$", file_content, re.MULTILINE)
+        OS_PRETTY_NAME=x[0]
+    print(OS_PRETTY_NAME)
+
 
 def getSmartCtlJson(device):
     cmd=['/usr/sbin/smartctl', '--info', '--xall', '--json', '--nocheck', 'standby', device]
@@ -58,7 +93,6 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
     print("register_sensor topic: %s" % topic)
     payload={
       "name": name,
-      "device_class": device_class,
       "state_topic":"homeassistant/%s/%s/state" % (entity_type, id),
       "availability_topic":"%s" % avail_topic,
       "unique_id":"%s" % id,
@@ -67,12 +101,14 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
 #            "name", HOST_NAME
 #           "fritz", MAC
            MAC.upper(),
-           OS_PRETTY_NAME
         ],
+        "model": OS_PRETTY_NAME,
         "connections":[["mac",MAC]],
         "name":HOST_NAME
       }
     }
+    if(device_class):
+        payload['device_class']=device_class
     if (json_attributes):
         payload["value_template"] = "{{ value_json.state}}"
         payload["json_attributes_topic"] = "homeassistant/%s/%s/state" % (entity_type, id)
@@ -94,7 +130,7 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
     client.publish(topic, payload=payload, retain=True)
 
 def MQTT_online(client):
-    client.publish(avail_topic, "online")
+    client.publish(avail_topic, "online", retain=True)
 
 def sendData(client, entity_type, id, payload):
 
@@ -167,6 +203,8 @@ def sendPartitionUsage(client, partition):
 
 
 def main():
+    set_MAC()
+
     if (len(sys.argv) > 1) and (sys.argv[1] == "--install-systemd-service"):
         print("setting up systemd service")
         f = open("/etc/systemd/system/hw2ha.service", "w")
@@ -196,6 +234,9 @@ WantedBy=default.target
         clear_retain_config=True
 
     client=MQTT_connect()
+
+    MQTT_register_sensor(client, "sensor", "cpu load", "%s_cpu" % (HOST_NAME), None, clear_retain=clear_retain_config)
+    MQTT_register_sensor(client, "sensor", "memory usage", "%s_memory" % (HOST_NAME), "DATA_SIZE", clear_retain=clear_retain_config)
 
     MQTT_register_sensor(client, "sensor", "net traffice bytes_sent", "%s_net_%s" % (HOST_NAME, "bytes_sent"), "DATA_RATE", clear_retain=clear_retain_config)
     MQTT_register_sensor(client, "sensor", "net traffice bytes_recv", "%s_net_%s" % (HOST_NAME, "bytes_recv"), "DATA_RATE", clear_retain=clear_retain_config)
@@ -240,6 +281,11 @@ WantedBy=default.target
             for device in block_devices:
                 sendSmartData(client, device)
         
+        load1, load5, load15 = psutil.getloadavg()
+        sendData(client, "sensor", "%s_cpu" % (HOST_NAME), load1 )
+        #sendData(client, "sensor", "%s_memory" % (HOST_NAME), psutil.virtual_memory()[3]/1000000000 )
+        sendData(client, "sensor", "%s_memory" % (HOST_NAME), psutil.virtual_memory()[3] )
+
         # network stats all together
         # pernic=True
         counters=psutil.net_io_counters()
