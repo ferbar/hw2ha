@@ -107,19 +107,29 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
         "name":HOST_NAME
       }
     }
-    if(device_class):
+    if(device_class=='CPU'):
+        payload['unit_of_measurement']=device_class
+        payload['icon']='mdi:cpu-64-bit'
+    elif(device_class == "NET_SENT"):
+        payload["unit_of_measurement"] = "B/s"
+        payload['icon']='mdi:upload_network'
+    elif(device_class == "NET_RECV"):
+        payload["unit_of_measurement"] = "B/s"
+        payload['icon']='mdi:download_network'
+    elif(device_class == "DATA_SIZE"):
+        payload["unit_of_measurement"] = "B"
+        payload['icon']='mdi:memory'
+    elif(device_class == "DISK"):
+        payload["unit_of_measurement"] = "%"
+        payload["value_template"] = "{{ value_json.percent}}"
+        payload['icon']='mdi:harddisk'
+    elif(device_class):
         payload['device_class']=device_class
+
     if (json_attributes):
         payload["value_template"] = "{{ value_json.state}}"
         payload["json_attributes_topic"] = "homeassistant/%s/%s/state" % (entity_type, id)
         payload["json_attributes_template"] = "{{ value_json | tojson }}"
-    if(device_class == "DATA_RATE"):
-        payload["unit_of_measurement"] = "B/s"
-    elif(device_class == "DATA_SIZE"):
-        payload["unit_of_measurement"] = "B"
-    elif(device_class == "BATTERY"):
-        payload["unit_of_measurement"] = "%"
-        payload["value_template"] = "{{ value_json.percent}}"
 
     if(clear_retain):
         print("clearing retain config")
@@ -235,11 +245,11 @@ WantedBy=default.target
 
     client=MQTT_connect()
 
-    MQTT_register_sensor(client, "sensor", "cpu load", "%s_cpu" % (HOST_NAME), None, clear_retain=clear_retain_config)
+    MQTT_register_sensor(client, "sensor", "cpu load", "%s_cpu" % (HOST_NAME), 'CPU', clear_retain=clear_retain_config)
     MQTT_register_sensor(client, "sensor", "memory usage", "%s_memory" % (HOST_NAME), "DATA_SIZE", clear_retain=clear_retain_config)
 
-    MQTT_register_sensor(client, "sensor", "net traffice bytes_sent", "%s_net_%s" % (HOST_NAME, "bytes_sent"), "DATA_RATE", clear_retain=clear_retain_config)
-    MQTT_register_sensor(client, "sensor", "net traffice bytes_recv", "%s_net_%s" % (HOST_NAME, "bytes_recv"), "DATA_RATE", clear_retain=clear_retain_config)
+    MQTT_register_sensor(client, "sensor", "net traffice bytes_sent", "%s_net_%s" % (HOST_NAME, "bytes_sent"), "NET_SENT", clear_retain=clear_retain_config)
+    MQTT_register_sensor(client, "sensor", "net traffice bytes_recv", "%s_net_%s" % (HOST_NAME, "bytes_recv"), "NET_RECV", clear_retain=clear_retain_config)
 
     block_devices=getSmartDevices()
 
@@ -253,7 +263,7 @@ WantedBy=default.target
         if regex.match(p.mountpoint):
             print("register disk usage for %s" % p.mountpoint)
             # yes indeed battery for %
-            MQTT_register_sensor(client, "sensor", "partition usage %s" % cleanupPath(p.mountpoint), "%s_%s" % (HOST_NAME, cleanupPath(p.mountpoint)), "BATTERY", json_attributes=True, clear_retain=clear_retain_config)
+            MQTT_register_sensor(client, "sensor", "partition usage %s" % cleanupPath(p.mountpoint), "%s_%s" % (HOST_NAME, cleanupPath(p.mountpoint)), "DISK", json_attributes=True, clear_retain=clear_retain_config)
             mounted_filesystems.append(p)
         else:
             print("skipping disk usage for %s" % p.mountpoint)
