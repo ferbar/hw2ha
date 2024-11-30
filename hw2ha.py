@@ -107,6 +107,12 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
         "name":HOST_NAME
       }
     }
+
+    if (json_attributes):
+        payload["value_template"] = "{{ value_json.state}}"
+        payload["json_attributes_topic"] = "homeassistant/%s/%s/state" % (entity_type, id)
+        payload["json_attributes_template"] = "{{ value_json | tojson }}"
+
     if(device_class=='CPU'):
         payload['unit_of_measurement']=device_class
         payload['icon']='mdi:cpu-64-bit'
@@ -125,11 +131,6 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
         payload['icon']='mdi:harddisk'
     elif(device_class):
         payload['device_class']=device_class
-
-    if (json_attributes):
-        payload["value_template"] = "{{ value_json.state}}"
-        payload["json_attributes_topic"] = "homeassistant/%s/%s/state" % (entity_type, id)
-        payload["json_attributes_template"] = "{{ value_json | tojson }}"
 
     if(clear_retain):
         print("clearing retain config")
