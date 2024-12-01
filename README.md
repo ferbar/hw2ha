@@ -16,6 +16,8 @@
 
 copy hw2ha.py to /opt/
 
+`apt-get / zypper install python3-paho-mqtt`
+
 `hw2ha.py --install-systemd-service` to install systemd service
 
 `systemct enable --now hw2ha`
