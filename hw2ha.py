@@ -210,7 +210,7 @@ def sendSmartData(client: mqtt_client, device):
 
     exit_status=int(jsonData['exit_status'])
     # bit 2
-    smart_error=exit_status & (1 << 2)
+    # some smart command failed / not supported
     # bit 7
     device_error_log=exit_status & (1 << 7)
     # bit 8
@@ -219,7 +219,7 @@ def sendSmartData(client: mqtt_client, device):
     smart_status_error=jsonData["smart_status"]["passed"] != True
 
     # upper case!!
-    problem="ON" if smart_error or device_error_log or selftest_error_log or smart_status_error else "OFF"
+    problem="ON" if device_error_log or selftest_error_log or smart_status_error else "OFF"
 
     smart_payload={
         "model_name": model_name,
@@ -228,7 +228,6 @@ def sendSmartData(client: mqtt_client, device):
         "size": size,
         "state": problem,
         "exit_status": exit_status,
-        "smart_error": smart_error,
         "device_error_log": device_error_log,
         "selftest_error_log": selftest_error_log,
         "smart_status_error": smart_status_error
