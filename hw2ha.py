@@ -22,10 +22,13 @@ import json
 import datetime
 import os
 import socket
+import glob
+from pathlib import Path
 
 
 MQTT_SERVER="home-assistant"
-HOST_NAME=socket.gethostname()
+# remove domain
+HOST_NAME=socket.gethostname().split('.')[0]
 MAC=False
 # mit negative lookahead können verzeichnisse ausgeschlossen werden
 MOUNTPOINT_REGEX="^\/(?!snap|foodevice).*$"
@@ -180,8 +183,16 @@ def getSmartDevices():
 #    print("ret: ", ret)
     devices=[]
     for d in ret['devices']:
-#        print("d:", d)
-        devices.append(d['name'].replace('/dev/',''))
+        print("d:", d, " name:",d['name'])
+        skip=False
+        for usbdir in glob.glob('/dev/disk/by-id/usb-*'):
+            usb_dev_path=Path(usbdir).resolve()
+            print("~~~~", usb_dev_path, d['name'])
+            if str(usb_dev_path) == str(d['name']):
+                print("SKIPPING USB DISK (%s)" % d)
+                skip=True
+        if not skip:
+            devices.append(d['name'].replace('/dev/',''))
 
     print("monitoring devices: ", devices)
     return devices
