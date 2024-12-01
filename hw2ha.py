@@ -28,7 +28,7 @@ MQTT_SERVER="home-assistant"
 HOST_NAME=socket.gethostname()
 MAC=False
 # mit negative lookahead können verzeichnisse ausgeschlossen werden
-MOUNTPOINT_REGEX="^\/(?!snap|dudl).*$"
+MOUNTPOINT_REGEX="^\/(?!snap|foodevice).*$"
 
 OS_PRETTY_NAME=False
 
@@ -120,7 +120,6 @@ def MQTT_register_sensor(client: mqtt_client, entity_type, name, id, device_clas
         payload["json_attributes_template"] = "{{ value_json | tojson }}"
 
     if(device_class=='CPU'):
-        payload['unit_of_measurement']=device_class
         payload['icon']='mdi:cpu-64-bit'
     elif(device_class == "NET_SENT"):
         payload["unit_of_measurement"] = "B/s"
