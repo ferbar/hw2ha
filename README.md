@@ -48,7 +48,7 @@ action:
   - service: notify.persistent_notification
     metadata: {}
     data:
-      title: Festplatte checken!!!
+      title: Check harddisks!!!
       message: >-
         smart register failed! Problem: {{trigger.to_state.state}} Errors:
         {{trigger.to_state.attributes.devices.errors}}
