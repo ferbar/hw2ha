@@ -5,8 +5,11 @@
 #
 # --install-systemd-service
 # --clear-retain-config
+#
+# TODO on reconnect: https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
+#
 
-import paho.mqtt.client as mqtt
+import paho.mqtt.client as mqtt_client
 import time
 import sys
 import re
@@ -28,6 +31,9 @@ MAC=False
 MOUNTPOINT_REGEX="^\/(?!snap|dudl).*$"
 
 OS_PRETTY_NAME=False
+
+# on start and when home-assistant has been restarted
+SEND_ALL=True
 
 def set_MAC():
     global MAC
@@ -78,13 +84,13 @@ def getSmartCtlJson(device):
 
 avail_topic="homeassistant/%s/avail" % (HOST_NAME)
 def MQTT_connect():
-    client = mqtt.Client()
+    client = mqtt_client.Client()
     client.will_set(avail_topic, payload="offline", qos=2, retain=False)
     client.connect(MQTT_SERVER, 1883 , 60)
     client.loop_start()
     return client
 
-def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attributes=False, clear_retain=False):
+def MQTT_register_sensor(client: mqtt_client, entity_type, name, id, device_class, json_attributes=False, clear_retain=False):
     # retain -r << soll ma für config machen
     #\"json_attributes_path\": \"\$.result\",
     #\"state_value_template\":\"{{ value_json.smart_status}}\",
@@ -140,10 +146,25 @@ def MQTT_register_sensor(client, entity_type, name, id, device_class, json_attri
         payload=json.dumps(payload)
     client.publish(topic, payload=payload, retain=True)
 
-def MQTT_online(client):
+def MQTT_online(client: mqtt_client):
     client.publish(avail_topic, "online", retain=True)
 
-def sendData(client, entity_type, id, payload):
+def MQTT_subscribe_ha_restart(client: mqtt_client):
+    def on_message(client, userdata, msg):
+        payload=msg.payload.decode()
+        print(f"Received `{payload}` from `{msg.topic}` topic")
+        global SEND_ALL
+        if payload == "online":
+            print("MQTT_subscribe_ha_restart: HA online message received")
+            SEND_ALL=True
+
+    DEFAULT_STATUS_TOPIC = 'homeassistant/status'
+    client.subscribe(DEFAULT_STATUS_TOPIC)
+    status_topic = 'hass/status'
+    client.subscribe(status_topic)
+    client.on_message = on_message
+
+def sendData(client: mqtt_client, entity_type, id, payload):
 
     print(json.dumps(payload))
     print("==================================================================")
@@ -167,7 +188,7 @@ def getSmartDevices():
     return devices
 
 
-def sendSmartData(client, device):
+def sendSmartData(client: mqtt_client, device):
     jsonData=getSmartCtlJson("/dev/%s" % device)
 
     # print(json.dumps(jsonData))
@@ -196,7 +217,7 @@ def cleanupPath(path):
         ret=path.replace("/","_")
     return ret
 
-def sendPartitionUsage(client, partition):
+def sendPartitionUsage(client: mqtt_client, partition):
     #total, used, free = shutil.disk_usage("/dev/%s" % DEVICE)
     #total, used, free, percent = shutil.disk_usage(partition)
     print(partition, psutil.disk_usage(partition).percent)
@@ -277,6 +298,7 @@ WantedBy=default.target
     # home-assistant needs a second after new sensors have been published
     time.sleep(1)
     MQTT_online(client)
+    MQTT_subscribe_ha_restart(client)
 
     for device in block_devices:
         sendSmartData(client, device)
@@ -285,10 +307,18 @@ WantedBy=default.target
     counters=psutil.net_io_counters()
     last_bytes_sent=counters.bytes_sent
     last_bytes_recv=counters.bytes_recv
+    global SEND_ALL
+    last_send_all=time.time()
+
     while True:
         #smart update everty 1 hour
-        now = datetime.datetime.now()
-        if now.minute == 0:
+        now = time.time()
+        if last_send_all + 3600 < now:
+            SEND_ALL=True
+
+        if SEND_ALL:
+            SEND_ALL=False
+            last_send_all=now
             for device in block_devices:
                 sendSmartData(client, device)
         
