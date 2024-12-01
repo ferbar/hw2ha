@@ -54,4 +54,4 @@ action:
         {{trigger.to_state.attributes.devices.errors}}
 mode: single
 
-`´´
+```
