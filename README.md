@@ -5,16 +5,25 @@
 * CPU load
 * Memory usage
 * Disk usage
-* Network traffic
+* Network traffic rx/tx
 
-copy hw2ha.py to /opt
-hw2ha.py --install-systemd-service to install systemd service
-systemct enable --now hw2ha
+![Home-Assistant disk sensor](doc/home_assistant_sensors.png)
 
-hw2ha.py --clear-retain-config to clean up Home-Assistant entities
+![Home-Assistant disk sensor](doc/home_assistant_harddisk.png)
+
+
+### Installation
+
+copy hw2ha.py to /opt/
+
+`hw2ha.py --install-systemd-service` to install systemd service
+
+`systemct enable --now hw2ha`
+
+`hw2ha.py --clear-retain-config` to clean up Home-Assistant entities
 
 
 ### Config:
 
-MQTT_SERVER="home-assistant"
+`MQTT_SERVER="home-assistant"`
 
