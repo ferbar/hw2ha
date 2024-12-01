@@ -27,3 +27,31 @@ copy hw2ha.py to /opt/
 
 `MQTT_SERVER="home-assistant"`
 
+## Home-Assistant Smart Register Alert
+
+copy hw2ha_smart_failed.yaml to .homeassistant/packages/
+
+```
+alias: Linux PC HD Smart Register
+description: ""
+trigger:
+  - platform: state
+    entity_id:
+      - binary_sensor.hw2ha_smart_register_failed
+    to: null
+    for:
+      hours: 0
+      minutes: 1
+      seconds: 0
+condition: []
+action:
+  - service: notify.persistent_notification
+    metadata: {}
+    data:
+      title: Festplatte checken!!!
+      message: >-
+        smart register failed! Problem: {{trigger.to_state.state}} Errors:
+        {{trigger.to_state.attributes.devices.errors}}
+mode: single
+
+`´´
