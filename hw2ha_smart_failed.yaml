@@ -1,0 +1,25 @@
+# hints by vdbrink.github.io https://vdbrink.github.io/homeassistant/homeassistant_templates.html
+# .homeassistant/packages/
+template:
+  - sensor:
+      - name: "HW2HA Smart Register Failed"
+        unique_id: hw2ha_smart_register_failed
+        state: " {{ this.attributes.get('devices').error | count }}"
+        icon: >
+          {% set count = this.attributes.get('devices').error | count %}
+          {{ 'mdi:harddisk-plus' if count > 0 else ('mdi:harddisk-remove') }}
+        attributes:
+              # {% set ns.smart_error = ns.smart_error + [device_attr(s.entity_id, 'name_by_user') or device_attr(s.entity_id, 'name') or s.name] %}
+          devices: >
+            {% set smart_disk_sensors = states.binary_sensor | selectattr('name','contains','disk health') | list %}
+            {% set ns = namespace(error=[], all=[]) %}
+            {% for s in smart_disk_sensors %}
+              {% set ns.all = ns.all + [s.name] %}
+              {% if s.state == "OFF" %}
+                {% set ns.error = ns.error + [s.name] %}
+              {% endif %}
+            {% endfor %}
+            {
+            "all": {{ ns.all }} ,
+            "errors": {{ ns.error }} 
+            }
