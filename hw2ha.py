@@ -6,7 +6,8 @@
 # --install-systemd-service
 # --clear-retain-config
 #
-# TODO on reconnect: https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
+# reconnect: https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
+# hint: reconnect testen mit `ss -K -tp '( dport = :1883  )'`
 #
 
 import paho.mqtt.client as mqtt_client
