@@ -85,10 +85,21 @@ def getSmartCtlJson(device):
     return ret
 
 
+def on_disconnect(client, userdata, rc):
+    print("=============MQTT disconnected=================")
+
+# send 'online' in case of reconnect
+def on_connect(client, userdata, flags, rc):
+    print("=============MQTT connected userdata:", userdata, " flags: ", flags, " rc:", rc)
+    MQTT_online(client)
+
+# client does auto-reconnect on it's own
 avail_topic="homeassistant/%s/avail" % (HOST_NAME)
 def MQTT_connect():
     client = mqtt_client.Client()
     client.will_set(avail_topic, payload="offline", qos=2, retain=False)
+    client.on_disconnect = on_disconnect
+    client.on_connect = on_connect
     client.connect(MQTT_SERVER, 1883 , 60)
     client.loop_start()
     return client
@@ -149,6 +160,7 @@ def MQTT_register_sensor(client: mqtt_client, entity_type, name, id, device_clas
     client.publish(topic, payload=payload, retain=True)
 
 def MQTT_online(client: mqtt_client):
+    print("=============MQTT online")
     client.publish(avail_topic, "online", retain=True)
 
 def MQTT_subscribe_ha_restart(client: mqtt_client):
@@ -322,6 +334,7 @@ WantedBy=default.target
 
     # home-assistant needs a second after new sensors have been published
     time.sleep(1)
+    # nachdem wir die config geschickt haben nocheinmal die online message ...
     MQTT_online(client)
     MQTT_subscribe_ha_restart(client)
 
