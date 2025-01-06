@@ -34,43 +34,71 @@ MAC=False
 # mit negative lookahead können verzeichnisse ausgeschlossen werden
 MOUNTPOINT_REGEX="^\/(?!snap|foodevice).*$"
 
+DEBUG=False
+
 OS_PRETTY_NAME=False
 
 # on start and when home-assistant has been restarted
 SEND_ALL=True
 
+class bcolors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    WARNING = '\033[91m'
+    FAIL = '\033[91m'
+    DEFAULT = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+def debug(*args):
+    if DEBUG:
+        print(*args)
+
+def info(*args):
+    print(bcolors.YELLOW, *args, bcolors.DEFAULT)
+
+def warn(*args):
+    print(bcolors.RED, *args, bcolors.DEFAULT, file=sys.stderr)
+
+def error(*args):
+    print(bcolors.RED, *args, bcolors.DEFAULT, file=sys.stderr)
+
 def set_MAC():
     global MAC
     global OS_PRETTY_NAME
+    info("getting MAC")
     # get MAC address:
     if MAC == False:
       #print(psutil.net_if_addrs())
       for nic_name, nic in psutil.net_if_addrs().items():
-        print("key:", nic_name)
+        debug("key:", nic_name)
         if nic_name=='lo':
           continue
         #print("nic:", nic)
         # net interface up?
         if socket.AF_INET in [snicaddr.family for snicaddr in nic] :
-          print("~~~~ using MAC address of %s" % nic_name)
+          debug("~~~~ using MAC address of %s" % nic_name)
           #print(nic)
           phy=[snicaddr.address for snicaddr in nic if socket.AF_PACKET == snicaddr.family ]
-          print(phy)
+          debug(phy)
           MAC=phy[0] or False
           break
     if MAC == False:
-      print("Error: MAC not found!")
-    print("Hostname", HOST_NAME)
-    print("MAC", MAC)
+      warn("Error: MAC not found!")
+    info("Hostname:", HOST_NAME)
+    info("MAC:", MAC)
 
     file_path = '/etc/os-release'
 
     with open(file_path, 'r') as file:
         file_content = file.read()
-        print(file_content)
+        debug(file_content)
         x = re.findall("^PRETTY_NAME=\"(.*)\"$", file_content, re.MULTILINE)
         OS_PRETTY_NAME=x[0]
-    print(OS_PRETTY_NAME)
+    info(OS_PRETTY_NAME)
 
 
 def getSmartCtlJson(device):
@@ -87,11 +115,11 @@ def getSmartCtlJson(device):
 
 
 def on_disconnect(client, userdata, rc):
-    print("=============MQTT disconnected=================")
+    warn("=============MQTT disconnected=================")
 
 # send 'online' in case of reconnect
 def on_connect(client, userdata, flags, rc):
-    print("=============MQTT connected userdata:", userdata, " flags: ", flags, " rc:", rc)
+    info("=============MQTT connected userdata:", userdata, " flags: ", flags, " rc:", rc)
     MQTT_online(client)
 
 # client does auto-reconnect on it's own
@@ -153,24 +181,24 @@ def MQTT_register_sensor(client: mqtt_client, entity_type, name, id, device_clas
         payload['device_class']=device_class
 
     if(clear_retain):
-        print("clearing retain config")
+        info("clearing retain config")
         payload=""
     else:
-        print("config: ", payload)
+        info("config: ", payload)
         payload=json.dumps(payload)
     client.publish(topic, payload=payload, retain=True)
 
 def MQTT_online(client: mqtt_client):
-    print("=============MQTT online")
+    info("=============MQTT online")
     client.publish(avail_topic, "online", retain=True)
 
 def MQTT_subscribe_ha_restart(client: mqtt_client):
     def on_message(client, userdata, msg):
         payload=msg.payload.decode()
-        print(f"Received `{payload}` from `{msg.topic}` topic")
+        info(f"Received `{payload}` from `{msg.topic}` topic")
         global SEND_ALL
         if payload == "online":
-            print("MQTT_subscribe_ha_restart: HA online message received")
+            info("MQTT_subscribe_ha_restart: HA online message received")
             SEND_ALL=True
 
     DEFAULT_STATUS_TOPIC = 'homeassistant/status'
@@ -181,14 +209,15 @@ def MQTT_subscribe_ha_restart(client: mqtt_client):
 
 def sendData(client: mqtt_client, entity_type, id, payload):
 
-    print(json.dumps(payload))
-    print("==================================================================")
+    debug(json.dumps(payload))
+    debug("==================================================================")
     topic="homeassistant/%s/%s/state" % (entity_type, id)
-    print("topic: %s" % topic)
+    debug("topic: %s" % topic)
     client.publish(topic, payload=json.dumps(payload))
 
 def getSmartDevices():
     # return ['sda','sdb']
+    info(getSmartDevices)
     cmd=["smartctl", "--scan", "--json"]
     completedProc = subprocess.run(cmd,  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -196,18 +225,19 @@ def getSmartDevices():
 #    print("ret: ", ret)
     devices=[]
     for d in ret['devices']:
-        print("d:", d, " name:",d['name'])
+        debug("d:", d, " name:",d['name'])
         skip=False
         for usbdir in glob.glob('/dev/disk/by-id/usb-*'):
             usb_dev_path=Path(usbdir).resolve()
-            print("~~~~", usb_dev_path, d['name'])
+            debug("~~~~", usb_dev_path, d['name'])
             if str(usb_dev_path) == str(d['name']):
-                print("SKIPPING USB DISK (%s)" % d)
+                info("SKIPPING USB DISK (%s)" % d)
                 skip=True
         if not skip:
+            debug("add disk", d['name'])
             devices.append(d['name'].replace('/dev/',''))
 
-    print("monitoring devices: ", devices)
+    info("monitoring devices: ", devices)
     return devices
 
 
@@ -258,10 +288,10 @@ def cleanupPath(path):
 def sendPartitionUsage(client: mqtt_client, partition):
     #total, used, free = shutil.disk_usage("/dev/%s" % DEVICE)
     #total, used, free, percent = shutil.disk_usage(partition)
-    print(partition, psutil.disk_usage(partition).percent)
+    debug(partition, psutil.disk_usage(partition).percent)
     #total, used, free = shutil.disk_usage(partition)
     total, used, free, percent = psutil.disk_usage(partition)
-    print("total=%s, used=%s, free=%s %s%%" % (total, used, free, percent))
+    debug("total=%s, used=%s, free=%s %s%%" % (total, used, free, percent))
     payload={
         "size": total,
         "used": used,
@@ -276,7 +306,7 @@ def main():
     set_MAC()
 
     if (len(sys.argv) > 1) and (sys.argv[1] == "--install-systemd-service"):
-        print("setting up systemd service")
+        info("setting up systemd service")
         f = open("/etc/systemd/system/hw2ha.service", "w")
         f.write("""# by hw2ha.sh
 [Unit]
@@ -319,18 +349,18 @@ WantedBy=default.target
     regex=re.compile(MOUNTPOINT_REGEX)
     mounted_filesystems=[]
     for p in psutil.disk_partitions():
-        print("============ mountpoint %s" % p.mountpoint)
+        info("============ mountpoint %s" % p.mountpoint)
         if regex.match(p.mountpoint):
             print("register disk usage for %s" % p.mountpoint)
             # yes indeed battery for %
             MQTT_register_sensor(client, "sensor", "partition usage %s" % cleanupPath(p.mountpoint), "%s_%s" % (HOST_NAME, cleanupPath(p.mountpoint)), "DISK", json_attributes=True, clear_retain=clear_retain_config)
             mounted_filesystems.append(p)
         else:
-            print("skipping disk usage for %s" % p.mountpoint)
+            warn("skipping disk usage for %s" % p.mountpoint)
 
     if(clear_retain_config):
         client.publish(avail_topic, payload='', retain=True)
-        print("retain config cleared")
+        info("retain config cleared")
         exit(0)
 
     # home-assistant needs a second after new sensors have been published
@@ -374,9 +404,9 @@ WantedBy=default.target
 
 
         # mounted filesystems disk size
-        print(mounted_filesystems)
+        debug(mounted_filesystems)
         for p in mounted_filesystems:
-            print(p.device, p.mountpoint, psutil.disk_usage(p.mountpoint).percent)
+            debug(p.device, p.mountpoint, psutil.disk_usage(p.mountpoint).percent)
             sendPartitionUsage(client, p.mountpoint)
 
         time.sleep(sleep_sec)
