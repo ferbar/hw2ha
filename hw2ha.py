@@ -164,6 +164,7 @@ def MQTT_register_sensor(client: mqtt_client, entity_type, name, id, device_clas
 
     if(device_class=='CPU'):
         payload['icon']='mdi:cpu-64-bit'
+        payload['state_class']='MEASUREMENT'
     elif(device_class == "NET_SENT"):
         payload["unit_of_measurement"] = "B/s"
         payload['icon']='mdi:upload_network'
