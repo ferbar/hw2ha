@@ -1,14 +1,27 @@
 #!/usr/bin/python3
-# apt-get / zypper install python3-paho-mqtt
+# apt-get / zypper install python3-paho-mqtt python3-psutil
 #
-# nach /opt kopieren
+# INSTALLATION:
 #
 # --install-systemd-service
+#
+# cleanup entities:
 # --clear-retain-config
 #
 # reconnect: https://www.emqx.com/en/blog/how-to-use-mqtt-in-python
 # hint: reconnect testen mit `ss -K -tp '( dport = :1883  )'`
 #
+# Config via environment (=>/opt/hw2ha.conf)
+#     DISABLE_SMARTCTL=y
+#
+# counter for netfilter rules: EXPR from
+#                                         nft --json list chain filter INPUT | jq
+#
+#     NFT_COUNTER\d+_EXPR='ip.saddr == 192.168.0.0/16; tcp.dport == 443'
+#     NFT_COUNTER\d+_NAME=nft_XXXXXX
+#
+#
+
 
 import paho.mqtt.client as mqtt_client
 import time
@@ -27,15 +40,19 @@ import glob
 from pathlib import Path
 
 
-MQTT_SERVER="home-assistant"
+DISABLE_SMARTCTL=os.environ.get("DISABLE_SMARTCTL", False)
+
+MQTT_SERVER=os.environ.get("MQTT_SERVER", "home-assistant")
 # remove domain
 HOST_NAME=socket.gethostname().split('.')[0]
-MAC=False
+# get from nic
+MAC=os.environ.get("MAC", False)
 # mit negative lookahead können verzeichnisse ausgeschlossen werden
 MOUNTPOINT_REGEX="^\/(?!snap|foodevice).*$"
 
-DEBUG=False
+DEBUG=os.environ.get("DEBUG", False)
 
+# get from /etc/os_release
 OS_PRETTY_NAME=False
 
 # on start and when home-assistant has been restarted
@@ -47,7 +64,7 @@ class bcolors:
     CYAN = '\033[96m'
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
-    WARNING = '\033[91m'
+    RED = '\033[91m'
     FAIL = '\033[91m'
     DEFAULT = '\033[0m'
     BOLD = '\033[1m'
@@ -87,7 +104,7 @@ def set_MAC():
           MAC=phy[0] or False
           break
     if MAC == False:
-      warn("Error: MAC not found!")
+        warn("Error: MAC not found!")
     info("Hostname:", HOST_NAME)
     info("MAC:", MAC)
 
@@ -302,6 +319,29 @@ def sendPartitionUsage(client: mqtt_client, partition):
     id="%s_%s" % (HOST_NAME, cleanupPath(partition) )
     sendData(client, "sensor", id, payload )
 
+def netfilterMatch2String(expr):
+    ret=""
+    last_ret="";
+    for e in expr:
+        if ret!=last_ret:
+            ret+='; '
+        last_ret=ret;
+        if "match" in e:
+            # FIXME: implement --dports ... dport={1,2,3}
+            ret+="%s.%s %s " % (e["match"]["left"]["payload"]["protocol"], e["match"]["left"]["payload"]["field"],e["match"]["op"])
+            if type(e["match"]["right"]) == str or type(e["match"]["right"]) == int:
+                ret+="%s" % e["match"]["right"]
+            else:
+                ret+="%s/%s" % ( e["match"]["right"]["prefix"]["addr"], e["match"]["right"]["prefix"]["len"])
+        elif "accept" in e:
+            ret+="accept "
+        elif "drop" in e:
+            ret+="drop "
+        elif "jump" in e:
+            ret+="jump "+e["jump"]["target"]
+    return ret.strip()
+
+
 
 def main():
     set_MAC()
@@ -309,7 +349,7 @@ def main():
     if (len(sys.argv) > 1) and (sys.argv[1] == "--install-systemd-service"):
         info("setting up systemd service")
         f = open("/etc/systemd/system/hw2ha.service", "w")
-        f.write("""# by hw2ha.sh
+        f.write("""# by hw2ha.py
 [Unit]
 Description=hw2ha sending hardware stats to home-assistant by MQTT
 # Requires=network
@@ -318,6 +358,7 @@ Wants=network-online.target
 
 [Service]
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/opt/hw2ha.conf
 ExecStart=/opt/hw2ha.py
 Restart=on-failure
 #User=XYZ
@@ -329,6 +370,7 @@ WantedBy=default.target
         f.close()
         os.system("systemctl daemon-reload")
         os.system("systemctl enable --now hw2ha")
+        warn("copy or softlink $0 to /opt/hw2ha.py by yourself pls")
         exit(0)
 
     clear_retain_config=False
@@ -340,14 +382,22 @@ WantedBy=default.target
     MQTT_register_sensor(client, "sensor", "cpu load", "%s_cpu" % (HOST_NAME), 'CPU', clear_retain=clear_retain_config)
     MQTT_register_sensor(client, "sensor", "memory usage", "%s_memory" % (HOST_NAME), "DATA_SIZE", clear_retain=clear_retain_config)
 
-    MQTT_register_sensor(client, "sensor", "net traffice bytes_sent", "%s_net_%s" % (HOST_NAME, "bytes_sent"), "NET_SENT", clear_retain=clear_retain_config)
-    MQTT_register_sensor(client, "sensor", "net traffice bytes_recv", "%s_net_%s" % (HOST_NAME, "bytes_recv"), "NET_RECV", clear_retain=clear_retain_config)
+# network stats all together ======================================================================
+    MQTT_register_sensor(client, "sensor", "net traffic bytes_sent", "%s_net_%s" % (HOST_NAME, "bytes_sent"), "NET_SENT", clear_retain=clear_retain_config)
+    MQTT_register_sensor(client, "sensor", "net traffic bytes_recv", "%s_net_%s" % (HOST_NAME, "bytes_recv"), "NET_RECV", clear_retain=clear_retain_config)
 
-    block_devices=getSmartDevices()
+# smartctl ========================================================================================
+    if (not DISABLE_SMARTCTL):
+        print("DISABLE_SMARTCTL:", DISABLE_SMARTCTL)
+        block_devices=getSmartDevices()
+    else:
+        warn("smartctl checking disabled")
+        block_devices=[]
 
     for device in block_devices:
         MQTT_register_sensor(client, "binary_sensor", "disk health %s" % device, "%s_%s" % (HOST_NAME, device), "problem", json_attributes=True, clear_retain=clear_retain_config)
 
+# partition usage =================================================================================
     regex=re.compile(MOUNTPOINT_REGEX)
     mounted_filesystems=[]
     for p in psutil.disk_partitions():
@@ -359,6 +409,25 @@ WantedBy=default.target
             mounted_filesystems.append(p)
         else:
             warn("skipping disk usage for %s" % p.mountpoint)
+
+# NETFILER filters ================================================================================
+    n=0
+    netfilter_counter={}
+    empty=0
+    while True:
+        print("looking for NFT_COUNTER%s_NAME" %n)
+        if os.environ.get("NFT_COUNTER%s_NAME" %n, False):
+            info("netfilter_counter: [" + ("NFT_COUNTER%s_NAME" %n) + " = "+os.environ.get("NFT_COUNTER%s_NAME" %n)+"] = " + ("NFT_COUNTER%s_EXPR" %n)+ "="+os.environ.get("NFT_COUNTER%s_EXPR" %n))
+            counter_name=os.environ.get("NFT_COUNTER%s_NAME" %n)
+            counter_expr=os.environ.get("NFT_COUNTER%s_EXPR" %n)
+            netfilter_counter[counter_name] = {"last_sent":None, "expr":counter_expr}
+            MQTT_register_sensor(client, "sensor", "net traffic filter %s" % counter_name, "%s_net_%s" % (HOST_NAME, counter_name), "NET_SENT", clear_retain=clear_retain_config)
+        else:
+            empty+=1
+        n+=1
+        if (empty > 3):
+            break
+
 
     if(clear_retain_config):
         client.publish(avail_topic, payload='', retain=True)
@@ -384,6 +453,7 @@ WantedBy=default.target
         if last_send_all + 3600 < now:
             SEND_ALL=True
 
+# smartctl ========================================================================================
         if SEND_ALL:
             SEND_ALL=False
             last_send_all=now
@@ -395,8 +465,7 @@ WantedBy=default.target
         #sendData(client, "sensor", "%s_memory" % (HOST_NAME), psutil.virtual_memory()[3]/1000000000 )
         sendData(client, "sensor", "%s_memory" % (HOST_NAME), psutil.virtual_memory()[3] )
 
-        # network stats all together
-        # pernic=True
+# network stats all together ======================================================================
         counters=psutil.net_io_counters()
         sendData(client, "sensor", "%s_net_%s" % (HOST_NAME, "bytes_sent"), (counters.bytes_sent-last_bytes_sent) / sleep_sec )
         sendData(client, "sensor", "%s_net_%s" % (HOST_NAME, "bytes_recv"), (counters.bytes_recv-last_bytes_recv) / sleep_sec )
@@ -405,7 +474,8 @@ WantedBy=default.target
         # =62749361, packets_sent=84311, packets_recv=94888, errin=0, errout=0, dropin=0, dropou
 
 
-        # mounted filesystems disk size
+# partition usage =================================================================================
+        regex=re.compile(MOUNTPOINT_REGEX)
         debug(mounted_filesystems)
         for p in mounted_filesystems:
             debug(p.device, p.mountpoint, psutil.disk_usage(p.mountpoint).percent)
@@ -413,6 +483,35 @@ WantedBy=default.target
 
         time.sleep(sleep_sec)
 
+# NETFILER filters ================================================================================
+        if len(netfilter_counter) > 0:
+            cmd=["nft", "--json", "list", "chain", "filter", "INPUT"]
+            completedProc = subprocess.run(cmd,  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            jsonData=json.loads(completedProc.stdout.decode("utf-8"))
+            for entry in jsonData['nftables']:
+                #print("entry", json.dumps(entry))
+                has_counter=False
+                if "rule" in entry:
+                    #print("is rule")
+                    expr=netfilterMatch2String(entry["rule"]["expr"])
+                    #print(">>>%s<<<" % expr)
+                    for counter_name in netfilter_counter:
+                        if expr == netfilter_counter[counter_name]["expr"]:
+                            debug("found name: %s=%s" % (counter_name, expr))
+                            for e in entry["rule"]["expr"]:
+                                if "counter" in e:
+                                    last_sent=netfilter_counter[counter_name]["last_sent"]
+                                    #print("has counter pkg: %d, byted: %d" %( e["counter"]["packets"], e["counter"]["bytes"] ))
+                                    counter_value=e["counter"]["bytes"]
+                                    if last_sent == None:
+                                        debug("didn't send data yet, skipping")
+                                    else:
+                                        sendData(client, "sensor", "%s_net_%s" % (HOST_NAME, counter_name), (counter_value - last_sent) / sleep_sec )
+                                    netfilter_counter[counter_name]["last_sent"]=counter_value
+                                    break
+
+# =============================================================================================
     client.loop_stop()
 
 if __name__ == "__main__":
