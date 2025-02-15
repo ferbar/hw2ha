@@ -490,7 +490,7 @@ WantedBy=default.target
 
             jsonData=json.loads(completedProc.stdout.decode("utf-8"))
             for entry in jsonData['nftables']:
-                #print("entry", json.dumps(entry))
+                #debug("entry", json.dumps(entry))
                 has_counter=False
                 if "rule" in entry:
                     #print("is rule")
@@ -502,7 +502,7 @@ WantedBy=default.target
                             for e in entry["rule"]["expr"]:
                                 if "counter" in e:
                                     last_sent=netfilter_counter[counter_name]["last_sent"]
-                                    #print("has counter pkg: %d, byted: %d" %( e["counter"]["packets"], e["counter"]["bytes"] ))
+                                    debug("%s has counter pkg: %d, byted: %d" %(expr, e["counter"]["packets"], e["counter"]["bytes"] ))
                                     counter_value=e["counter"]["bytes"]
                                     if last_sent == None:
                                         debug("didn't send data yet, skipping")
