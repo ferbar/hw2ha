@@ -16,7 +16,7 @@
 
 copy hw2ha.py to /opt/
 
-`apt-get / zypper install python3-paho-mqtt python3-psutil`
+`apt-get / zypper install python3-paho-mqtt python3-psutil smartmontools`
 
 `hw2ha.py --install-systemd-service` to install systemd service
 
