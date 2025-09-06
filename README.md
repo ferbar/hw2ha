@@ -16,11 +16,11 @@
 
 copy hw2ha.py to /opt/
 
-`apt-get / zypper install python3-paho-mqtt`
+`apt-get / zypper install python3-paho-mqtt python3-psutil`
 
 `hw2ha.py --install-systemd-service` to install systemd service
 
-`systemct enable --now hw2ha`
+`systemctl enable --now hw2ha`
 
 `hw2ha.py --clear-retain-config` to clean up Home-Assistant entities
 
