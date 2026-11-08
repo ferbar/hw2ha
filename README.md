@@ -20,7 +20,7 @@ copy hw2ha.py to /opt/
 
 `hw2ha.py --install-systemd-service` to install systemd service
 
-`systemct enable --now hw2ha`
+`systemctl enable --now hw2ha`
 
 `hw2ha.py --clear-retain-config` to clean up Home-Assistant entities
 
